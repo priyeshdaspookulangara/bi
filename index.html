@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Custom Visualization SDK Demo</title>
+    <link rel="stylesheet" href="viz-styles.css">
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+        }
+        #chart-container {
+            max-width: 800px;
+            height: 500px;
+            margin: 40px auto;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Stacked Column Chart Demo</h1>
+    <div id="chart-container" class="viz-container"></div>
+
+    <script src="viz-sdk.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            // Sample Data
+            const salesData = [
+              { "Category": "Product A", "Segment": "North", "Sales": 15000 },
+              { "Category": "Product B", "Segment": "North", "Sales": 12000 },
+              { "Category": "Product A", "Segment": "South", "Sales": 8000 },
+              { "Category": "Product B", "Segment": "South", "Sales": 18000 },
+              { "Category": "Product C", "Segment": "North", "Sales": 10000 },
+              { "Category": "Product A", "Segment": "West", "Sales": 5000 },
+              { "Category": "Product C", "Segment": "South", "Sales": 7000 },
+              { "Category": "Product B", "Segment": "West", "Sales": 9000 },
+              { "Category": "Product C", "Segment": "West", "Sales": 4000 }
+            ];
+
+            // Chart Container
+            const container = document.getElementById('chart-container');
+
+            // Chart Options
+            const options = {
+                categoryKey: 'Category',
+                stackByKey: 'Segment',
+                valueKey: 'Sales'
+            };
+
+            // Create the chart
+            VizSDK.createChart('StackedColumn', container, salesData, options);
+        });
+    </script>
+
+</body>
+</html>
