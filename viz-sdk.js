@@ -26,10 +26,16 @@ class VizSDK {
         }
 
         switch (type) {
-            case 'StackedColumn':
+            case 'StackedColumn': {
                 const chart = new StackedColumnChart(container, data, options);
                 chart.render();
                 return chart;
+            }
+            case 'Pie': {
+                const chart = new PieChart(container, data, options);
+                chart.render();
+                return chart;
+            }
             default:
                 console.error(`VizSDK Error: Chart type "${type}" is not supported.`);
                 return null;
@@ -97,6 +103,39 @@ class DataProcessor {
             maxTotal,
             uniqueSegments: Array.from(uniqueSegments)
         };
+    }
+
+    /**
+     * Aggregates data for a pie chart.
+     * @param {string} categoryKey - The data key for the pie slices.
+     * @param {string} valueKey - The data key for the numerical value.
+     * @returns {{pieData: Array<Object>, total: number, uniqueCategories: Array<string>}}
+     */
+    getPieData(categoryKey, valueKey) {
+        const aggregated = {};
+        let total = 0;
+
+        this.data.forEach(item => {
+            const category = item[categoryKey];
+            const value = item[valueKey];
+
+            if (value > 0) {
+                if (!aggregated[category]) {
+                    aggregated[category] = 0;
+                }
+                aggregated[category] += value;
+                total += value;
+            }
+        });
+
+        const pieData = Object.keys(aggregated).map(category => ({
+            category,
+            value: aggregated[category]
+        }));
+
+        const uniqueCategories = Object.keys(aggregated);
+
+        return { pieData, total, uniqueCategories };
     }
 }
 
@@ -330,5 +369,208 @@ class StackedColumnChart {
         this.tooltip.className = 'viz-tooltip';
         // Append to the main container to be positioned relative to the viewport
         document.body.appendChild(this.tooltip);
+    }
+}
+
+/**
+ * Renders and manages a pie chart.
+ */
+class PieChart {
+    /**
+     * @param {HTMLElement} container - The DOM element for the chart.
+     * @param {Array<Object>} data - The raw JSON data.
+     * @param {Object} options - Chart configuration.
+     * @param {string} options.categoryKey - The key for pie chart categories.
+     * @param {string} options.valueKey - The key for numerical values.
+     */
+    constructor(container, data, options) {
+        this.container = container;
+        this.data = data;
+        this.options = options;
+        this.dataProcessor = new DataProcessor(this.data);
+        this.svgNS = "http://www.w3.org/2000/svg";
+    }
+
+    /**
+     * Main method to render the chart.
+     */
+    render() {
+        const { categoryKey, valueKey } = this.options;
+        const { pieData, total, uniqueCategories } = this.dataProcessor.getPieData(categoryKey, valueKey);
+
+        this.processedData = pieData;
+        this.total = total;
+        this.uniqueCategories = uniqueCategories;
+
+        // Clear container
+        this.container.innerHTML = '';
+
+        // Dimensions
+        this.width = this.container.clientWidth;
+        this.height = this.container.clientHeight;
+        this.radius = Math.min(this.width, this.height) / 2 * 0.75;
+        const centerX = this.width / 2;
+        const centerY = this.height / 2;
+
+        // Create SVG element
+        this.svg = document.createElementNS(this.svgNS, "svg");
+        this.svg.setAttribute('width', this.width);
+        this.svg.setAttribute('height', this.height);
+        this.container.appendChild(this.svg);
+
+        // Chart area, centered
+        this.chartArea = document.createElementNS(this.svgNS, 'g');
+        this.chartArea.setAttribute('transform', `translate(${centerX}, ${centerY})`);
+        this.svg.appendChild(this.chartArea);
+
+        // Color map
+        this.colorMap = {};
+        const colors = ['#4e79a7', '#f28e2c', '#e15759', '#76b7b2', '#59a14f', '#edc949', '#af7aa1', '#ff9da7', '#9c755f', '#bab0ab'];
+        this.uniqueCategories.forEach((category, i) => {
+            this.colorMap[category] = colors[i % colors.length];
+        });
+
+        this._drawSlices();
+        this._drawLegend();
+        this._createTooltip();
+        this._setupInteractivity();
+    }
+
+    /**
+     * Draws the individual pie slices.
+     * @private
+     */
+    _drawSlices() {
+        let startAngle = 0;
+        this.processedData.forEach(d => {
+            const percentage = d.value / this.total;
+            const sweepAngle = percentage * 360;
+
+            if(sweepAngle > 0) {
+                const slice = this._createSlicePath(startAngle, sweepAngle, d.category, d.value);
+                this.chartArea.appendChild(slice);
+            }
+
+            startAngle += sweepAngle;
+        });
+    }
+
+    /**
+     * Creates an SVG path element for a single pie slice.
+     * @private
+     */
+    _createSlicePath(startAngle, sweepAngle, category, value) {
+        const path = document.createElementNS(this.svgNS, 'path');
+        const endAngle = startAngle + sweepAngle;
+
+        const start = this._polarToCartesian(this.radius, startAngle);
+        const end = this._polarToCartesian(this.radius, endAngle);
+
+        const largeArcFlag = sweepAngle > 180 ? "1" : "0";
+
+        const d = [
+            "M", 0, 0,
+            "L", start.x, start.y,
+            "A", this.radius, this.radius, 0, largeArcFlag, 1, end.x, end.y,
+            "Z"
+        ].join(" ");
+
+        path.setAttribute("d", d);
+        path.setAttribute("fill", this.colorMap[category]);
+        path.dataset.category = category;
+        path.dataset.value = value;
+        path.dataset.percentage = (value / this.total * 100).toFixed(2);
+
+        return path;
+    }
+
+    /**
+     * Converts polar coordinates (radius, angle) to Cartesian (x, y).
+     * @private
+     */
+    _polarToCartesian(radius, angleInDegrees) {
+        const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
+        return {
+            x: radius * Math.cos(angleInRadians),
+            y: radius * Math.sin(angleInRadians)
+        };
+    }
+
+    /**
+     * Draws the chart legend.
+     * @private
+     */
+    _drawLegend() {
+        const legendArea = document.createElementNS(this.svgNS, 'g');
+        const legendX = 20;
+        const legendY = 20;
+        legendArea.setAttribute('transform', `translate(${legendX}, ${legendY})`);
+        this.svg.appendChild(legendArea);
+
+        let yOffset = 0;
+        this.uniqueCategories.forEach(category => {
+            const legendItem = document.createElementNS(this.svgNS, 'g');
+            legendItem.setAttribute('transform', `translate(0, ${yOffset})`);
+
+            const rect = document.createElementNS(this.svgNS, 'rect');
+            rect.setAttribute('width', 15);
+            rect.setAttribute('height', 15);
+            rect.setAttribute('fill', this.colorMap[category]);
+            legendItem.appendChild(rect);
+
+            const text = document.createElementNS(this.svgNS, 'text');
+            text.setAttribute('x', 20);
+            text.setAttribute('y', 12);
+            text.setAttribute('class', 'legend-label');
+            text.textContent = category;
+            legendItem.appendChild(text);
+
+            legendArea.appendChild(legendItem);
+            yOffset += 25;
+        });
+    }
+
+    /**
+     * Creates and manages the tooltip element.
+     * @private
+     */
+    _createTooltip() {
+        this.tooltip = document.createElement('div');
+        this.tooltip.className = 'viz-tooltip';
+        document.body.appendChild(this.tooltip);
+    }
+
+    /**
+     * Sets up event listeners for interactivity.
+     * @private
+     */
+    _setupInteractivity() {
+        this.chartArea.addEventListener('mouseover', (e) => {
+            const target = e.target;
+            if (target.tagName === 'path' && target.dataset.value) {
+                const data = target.dataset;
+                const content = `
+                    <strong>${data.category}</strong><br>
+                    Value: ${parseInt(data.value).toLocaleString()}<br>
+                    (${data.percentage}%)
+                `;
+                this.tooltip.innerHTML = content;
+                this.tooltip.style.display = 'block';
+                target.style.opacity = 0.7;
+            }
+        });
+
+        this.chartArea.addEventListener('mousemove', (e) => {
+            this.tooltip.style.left = `${e.clientX + 15}px`;
+            this.tooltip.style.top = `${e.clientY + 15}px`;
+        });
+
+        this.chartArea.addEventListener('mouseout', (e) => {
+            const target = e.target;
+            if (target.tagName === 'path') {
+                this.tooltip.style.display = 'none';
+                target.style.opacity = 1;
+            }
+        });
     }
 }

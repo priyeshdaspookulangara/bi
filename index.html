@@ -10,21 +10,40 @@
             font-family: sans-serif;
             padding: 20px;
         }
-        h1 {
+        h1, h2 {
             text-align: center;
         }
-        #chart-container {
+        .chart-wrapper {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 40px;
+        }
+        .viz-container {
+            width: 100%;
             max-width: 800px;
             height: 500px;
-            margin: 40px auto;
             border: 1px solid #ccc;
+        }
+        #pie-chart-container {
+            max-width: 600px;
         }
     </style>
 </head>
 <body>
 
-    <h1>Stacked Column Chart Demo</h1>
-    <div id="chart-container" class="viz-container"></div>
+    <h1>Custom Visualization SDK Demo</h1>
+
+    <div class="chart-wrapper">
+        <div>
+            <h2>Stacked Column Chart (Sales by Product)</h2>
+            <div id="column-chart-container" class="viz-container"></div>
+        </div>
+        <div>
+            <h2>Pie Chart (Sales by Segment)</h2>
+            <div id="pie-chart-container" class="viz-container"></div>
+        </div>
+    </div>
 
     <script src="viz-sdk.js"></script>
     <script>
@@ -42,18 +61,22 @@
               { "Category": "Product C", "Segment": "West", "Sales": 4000 }
             ];
 
-            // Chart Container
-            const container = document.getElementById('chart-container');
-
-            // Chart Options
-            const options = {
+            // --- Create Stacked Column Chart ---
+            const columnContainer = document.getElementById('column-chart-container');
+            const columnOptions = {
                 categoryKey: 'Category',
                 stackByKey: 'Segment',
                 valueKey: 'Sales'
             };
+            VizSDK.createChart('StackedColumn', columnContainer, salesData, columnOptions);
 
-            // Create the chart
-            VizSDK.createChart('StackedColumn', container, salesData, options);
+            // --- Create Pie Chart ---
+            const pieContainer = document.getElementById('pie-chart-container');
+            const pieOptions = {
+                categoryKey: 'Segment', // Slicing by segment
+                valueKey: 'Sales'
+            };
+            VizSDK.createChart('Pie', pieContainer, salesData, pieOptions);
         });
     </script>
 
