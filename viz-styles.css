@@ -64,3 +64,17 @@ rect, polygon {
     dominant-baseline: middle;
     pointer-events: none; /* So the label doesn't block mouse events on the polygon */
 }
+
+/* Line Chart */
+.line-path {
+    fill: none;
+    stroke: #4e79a7;
+    stroke-width: 3;
+}
+
+.line-point {
+    fill: #4e79a7;
+    stroke: white;
+    stroke-width: 2;
+    transition: r 0.2s ease-in-out;
+}

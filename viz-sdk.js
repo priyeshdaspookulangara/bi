@@ -41,6 +41,11 @@ class VizSDK {
                 chart.render();
                 return chart;
             }
+            case 'Line': {
+                const chart = new LineChart(container, data, options);
+                chart.render();
+                return chart;
+            }
             default:
                 console.error(`VizSDK Error: Chart type "${type}" is not supported.`);
                 return null;
@@ -178,6 +183,33 @@ class DataProcessor {
         });
 
         return { funnelData, maxValue };
+    }
+
+    /**
+     * Prepares data for a line chart.
+     * @param {string} xKey - The data key for the x-axis.
+     * @param {string} yKey - The data key for the y-axis (numerical value).
+     * @returns {{lineData: Array<Object>, yMin: number, yMax: number}}
+     */
+    getLineData(xKey, yKey) {
+        // For line charts, data is assumed to be pre-sorted by the x-axis key.
+        const lineData = [...this.data];
+
+        if (lineData.length === 0) {
+            return { lineData: [], yMin: 0, yMax: 0 };
+        }
+
+        // Find min and max y-values for scaling the y-axis.
+        let yMin = lineData[0][yKey];
+        let yMax = lineData[0][yKey];
+
+        lineData.forEach(item => {
+            const value = item[yKey];
+            if (value < yMin) yMin = value;
+            if (value > yMax) yMax = value;
+        });
+
+        return { lineData, yMin, yMax };
     }
 }
 
@@ -612,6 +644,202 @@ class PieChart {
             if (target.tagName === 'path') {
                 this.tooltip.style.display = 'none';
                 target.style.opacity = 1;
+            }
+        });
+    }
+}
+
+/**
+ * Renders and manages a line chart.
+ */
+class LineChart {
+    /**
+     * @param {HTMLElement} container - The DOM element for the chart.
+     * @param {Array<Object>} data - The raw JSON data.
+     * @param {Object} options - Chart configuration.
+     * @param {string} options.xKey - The key for the x-axis.
+     * @param {string} options.yKey - The key for the y-axis.
+     */
+    constructor(container, data, options) {
+        this.container = container;
+        this.data = data;
+        this.options = options;
+        this.dataProcessor = new DataProcessor(this.data);
+        this.svgNS = "http://www.w3.org/2000/svg";
+    }
+
+    /**
+     * Main method to render the chart.
+     */
+    render() {
+        const { xKey, yKey } = this.options;
+        const { lineData, yMin, yMax } = this.dataProcessor.getLineData(xKey, yKey);
+
+        this.processedData = lineData;
+        this.yMin = yMin;
+        this.yMax = yMax;
+
+        // Clear container
+        this.container.innerHTML = '';
+
+        // Dimensions
+        this.width = this.container.clientWidth;
+        this.height = this.container.clientHeight;
+        this.margin = { top: 20, right: 30, bottom: 40, left: 60 };
+        this.chartWidth = this.width - this.margin.left - this.margin.right;
+        this.chartHeight = this.height - this.margin.top - this.margin.bottom;
+
+        // Create SVG element
+        this.svg = document.createElementNS(this.svgNS, "svg");
+        this.svg.setAttribute('width', this.width);
+        this.svg.setAttribute('height', this.height);
+        this.container.appendChild(this.svg);
+
+        this.chartArea = document.createElementNS(this.svgNS, 'g');
+        this.chartArea.setAttribute('transform', `translate(${this.margin.left}, ${this.margin.top})`);
+        this.svg.appendChild(this.chartArea);
+
+        this._drawAxes();
+        this._drawLine();
+        this._drawPoints();
+        this._createTooltip();
+        this._setupInteractivity();
+    }
+
+    /**
+     * Draws the X and Y axes.
+     * @private
+     */
+    _drawAxes() {
+        const yRange = this.yMax - this.yMin;
+
+        // Y-Axis
+        const yAxis = document.createElementNS(this.svgNS, 'line');
+        yAxis.setAttribute('x1', 0);
+        yAxis.setAttribute('y1', 0);
+        yAxis.setAttribute('x2', 0);
+        yAxis.setAttribute('y2', this.chartHeight);
+        yAxis.setAttribute('class', 'axis');
+        this.chartArea.appendChild(yAxis);
+
+        // Y-Axis Labels
+        const yTicks = 5;
+        for (let i = 0; i <= yTicks; i++) {
+            const value = this.yMin + (yRange / yTicks) * i;
+            const yPos = this.chartHeight - ((value - this.yMin) / yRange) * this.chartHeight;
+
+            const label = document.createElementNS(this.svgNS, 'text');
+            label.setAttribute('x', -10);
+            label.setAttribute('y', yPos);
+            label.setAttribute('class', 'axis-label y-axis-label');
+            label.textContent = value.toLocaleString();
+            this.chartArea.appendChild(label);
+        }
+
+        // X-Axis
+        const xAxis = document.createElementNS(this.svgNS, 'line');
+        xAxis.setAttribute('x1', 0);
+        xAxis.setAttribute('y1', this.chartHeight);
+        xAxis.setAttribute('x2', this.chartWidth);
+        xAxis.setAttribute('y2', this.chartHeight);
+        xAxis.setAttribute('class', 'axis');
+        this.chartArea.appendChild(xAxis);
+
+        // X-Axis Labels
+        const xStep = this.chartWidth / (this.processedData.length - 1);
+        this.processedData.forEach((d, i) => {
+            const xPos = i * xStep;
+            const label = document.createElementNS(this.svgNS, 'text');
+            label.setAttribute('x', xPos);
+            label.setAttribute('y', this.chartHeight + 20);
+            label.setAttribute('class', 'axis-label x-axis-label');
+            label.textContent = d[this.options.xKey];
+            this.chartArea.appendChild(label);
+        });
+    }
+
+    /**
+     * Draws the line path.
+     * @private
+     */
+    _drawLine() {
+        const path = document.createElementNS(this.svgNS, 'path');
+        const xStep = this.chartWidth / (this.processedData.length - 1);
+        const yRange = this.yMax - this.yMin;
+
+        const pathData = this.processedData.map((d, i) => {
+            const x = i * xStep;
+            const y = this.chartHeight - ((d[this.options.yKey] - this.yMin) / yRange) * this.chartHeight;
+            return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+        }).join(" ");
+
+        path.setAttribute('d', pathData);
+        path.setAttribute('class', 'line-path');
+        this.chartArea.appendChild(path);
+    }
+
+    /**
+     * Draws the points on the line.
+     * @private
+     */
+    _drawPoints() {
+        const xStep = this.chartWidth / (this.processedData.length - 1);
+        const yRange = this.yMax - this.yMin;
+
+        this.processedData.forEach((d, i) => {
+            const x = i * xStep;
+            const y = this.chartHeight - ((d[this.options.yKey] - this.yMin) / yRange) * this.chartHeight;
+
+            const circle = document.createElementNS(this.svgNS, 'circle');
+            circle.setAttribute('cx', x);
+            circle.setAttribute('cy', y);
+            circle.setAttribute('r', 5);
+            circle.setAttribute('class', 'line-point');
+
+            circle.dataset.xValue = d[this.options.xKey];
+            circle.dataset.yValue = d[this.options.yKey];
+
+            this.chartArea.appendChild(circle);
+        });
+    }
+
+    /**
+     * Creates the tooltip element.
+     * @private
+     */
+    _createTooltip() {
+        this.tooltip = document.createElement('div');
+        this.tooltip.className = 'viz-tooltip';
+        document.body.appendChild(this.tooltip);
+    }
+
+    /**
+     * Sets up interactivity for points.
+     * @private
+     */
+    _setupInteractivity() {
+        this.chartArea.addEventListener('mouseover', (e) => {
+            if (e.target.tagName === 'circle') {
+                e.target.style.r = '7';
+                const data = e.target.dataset;
+                const content = `
+                    <strong>${this.options.xKey}:</strong> ${data.xValue}<br>
+                    <strong>${this.options.yKey}:</strong> ${parseInt(data.yValue).toLocaleString()}
+                `;
+                this.tooltip.innerHTML = content;
+                this.tooltip.style.display = 'block';
+            }
+        });
+
+        this.chartArea.addEventListener('mousemove', (e) => {
+            this.tooltip.style.left = `${e.clientX + 15}px`;
+            this.tooltip.style.top = `${e.clientY + 15}px`;
+        });
+
+        this.chartArea.addEventListener('mouseout', (e) => {
+            if (e.target.tagName === 'circle') {
+                e.target.style.r = '5';
+                this.tooltip.style.display = 'none';
             }
         });
     }

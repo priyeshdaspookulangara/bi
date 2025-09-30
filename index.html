@@ -45,11 +45,15 @@
         </div>
     </div>
 
-    <hr>
-
-    <div>
-        <h2>Funnel Chart (Marketing Funnel)</h2>
-        <div id="funnel-chart-container" class="viz-container"></div>
+    <div class="chart-wrapper">
+        <div>
+            <h2>Funnel Chart (Marketing Funnel)</h2>
+            <div id="funnel-chart-container" class="viz-container"></div>
+        </div>
+        <div>
+            <h2>Line Chart (Monthly Revenue)</h2>
+            <div id="line-chart-container" class="viz-container"></div>
+        </div>
     </div>
 
 
@@ -78,6 +82,16 @@
                 { "Stage": "Referral", "Users": 750 }
             ];
 
+            // --- Sample Data for Line Chart ---
+            const lineData = [
+                { "Month": "Jan", "Revenue": 22000 },
+                { "Month": "Feb", "Revenue": 24000 },
+                { "Month": "Mar", "Revenue": 21000 },
+                { "Month": "Apr", "Revenue": 27000 },
+                { "Month": "May", "Revenue": 31000 },
+                { "Month": "Jun", "Revenue": 29000 }
+            ];
+
             // --- Create Stacked Column Chart ---
             const columnContainer = document.getElementById('column-chart-container');
             const columnOptions = {
@@ -102,6 +116,14 @@
                 valueKey: 'Users'
             };
             VizSDK.createChart('Funnel', funnelContainer, funnelData, funnelOptions);
+
+            // --- Create Line Chart ---
+            const lineContainer = document.getElementById('line-chart-container');
+            const lineOptions = {
+                xKey: 'Month',
+                yKey: 'Revenue'
+            };
+            VizSDK.createChart('Line', lineContainer, lineData, lineOptions);
         });
     </script>
 
