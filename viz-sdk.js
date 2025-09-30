@@ -36,6 +36,11 @@ class VizSDK {
                 chart.render();
                 return chart;
             }
+            case 'Funnel': {
+                const chart = new FunnelChart(container, data, options);
+                chart.render();
+                return chart;
+            }
             default:
                 console.error(`VizSDK Error: Chart type "${type}" is not supported.`);
                 return null;
@@ -136,6 +141,43 @@ class DataProcessor {
         const uniqueCategories = Object.keys(aggregated);
 
         return { pieData, total, uniqueCategories };
+    }
+
+    /**
+     * Prepares data for a funnel chart.
+     * @param {string} categoryKey - The data key for the funnel stages.
+     * @param {string} valueKey - The data key for the numerical value.
+     * @returns {{funnelData: Array<Object>, maxValue: number}}
+     */
+    getFunnelData(categoryKey, valueKey) {
+        // Aggregate data similar to pie chart
+        const aggregated = {};
+        this.data.forEach(item => {
+            const category = item[categoryKey];
+            const value = item[valueKey];
+            if (value > 0) {
+                if (!aggregated[category]) {
+                    aggregated[category] = 0;
+                }
+                aggregated[category] += value;
+            }
+        });
+
+        // Convert to array and sort descending by value
+        let funnelData = Object.keys(aggregated).map(category => ({
+            category,
+            value: aggregated[category]
+        })).sort((a, b) => b.value - a.value);
+
+        const maxValue = funnelData.length > 0 ? funnelData[0].value : 0;
+
+        // Calculate conversion rates
+        funnelData = funnelData.map((d, i, arr) => {
+            const conversion = (i === 0) ? 100 : (d.value / arr[i - 1].value) * 100;
+            return { ...d, conversion: conversion.toFixed(2) };
+        });
+
+        return { funnelData, maxValue };
     }
 }
 
@@ -568,6 +610,159 @@ class PieChart {
         this.chartArea.addEventListener('mouseout', (e) => {
             const target = e.target;
             if (target.tagName === 'path') {
+                this.tooltip.style.display = 'none';
+                target.style.opacity = 1;
+            }
+        });
+    }
+}
+
+/**
+ * Renders and manages a funnel chart.
+ */
+class FunnelChart {
+    /**
+     * @param {HTMLElement} container - The DOM element for the chart.
+     * @param {Array<Object>} data - The raw JSON data.
+     * @param {Object} options - Chart configuration.
+     * @param {string} options.categoryKey - The key for funnel stages.
+     * @param {string} options.valueKey - The key for numerical values.
+     */
+    constructor(container, data, options) {
+        this.container = container;
+        this.data = data;
+        this.options = options;
+        this.dataProcessor = new DataProcessor(this.data);
+        this.svgNS = "http://www.w3.org/2000/svg";
+    }
+
+    /**
+     * Main method to render the chart.
+     */
+    render() {
+        const { categoryKey, valueKey } = this.options;
+        const { funnelData, maxValue } = this.dataProcessor.getFunnelData(categoryKey, valueKey);
+
+        this.processedData = funnelData;
+        this.maxValue = maxValue;
+
+        // Clear container
+        this.container.innerHTML = '';
+
+        // Dimensions
+        this.width = this.container.clientWidth;
+        this.height = this.container.clientHeight;
+        this.margin = { top: 20, right: 20, bottom: 20, left: 20 };
+        this.chartWidth = this.width - this.margin.left - this.margin.right;
+        this.chartHeight = this.height - this.margin.top - this.margin.bottom;
+
+        // Create SVG element
+        this.svg = document.createElementNS(this.svgNS, "svg");
+        this.svg.setAttribute('width', this.width);
+        this.svg.setAttribute('height', this.height);
+        this.container.appendChild(this.svg);
+
+        this.chartArea = document.createElementNS(this.svgNS, 'g');
+        this.chartArea.setAttribute('transform', `translate(${this.margin.left}, ${this.margin.top})`);
+        this.svg.appendChild(this.chartArea);
+
+        // Color map
+        this.colorMap = {};
+        const colors = ['#4e79a7', '#f28e2c', '#e15759', '#76b7b2', '#59a14f', '#edc949'];
+        this.processedData.forEach((d, i) => {
+            this.colorMap[d.category] = colors[i % colors.length];
+        });
+
+        this._drawStages();
+        this._createTooltip();
+        this._setupInteractivity();
+    }
+
+    /**
+     * Draws the trapezoidal stages of the funnel.
+     * @private
+     */
+    _drawStages() {
+        const stageCount = this.processedData.length;
+        if (stageCount === 0) return;
+
+        const stageHeight = this.chartHeight / stageCount;
+        const centerX = this.chartWidth / 2;
+
+        this.processedData.forEach((d, i) => {
+            const topValue = d.value;
+            const bottomValue = (i + 1 < stageCount) ? this.processedData[i + 1].value : 0;
+
+            const topWidth = (topValue / this.maxValue) * this.chartWidth;
+            const bottomWidth = (bottomValue / this.maxValue) * this.chartWidth;
+
+            const y1 = i * stageHeight;
+            const y2 = (i + 1) * stageHeight;
+
+            const points = [
+                `${centerX - topWidth / 2},${y1}`,
+                `${centerX + topWidth / 2},${y1}`,
+                `${centerX + bottomWidth / 2},${y2}`,
+                `${centerX - bottomWidth / 2},${y2}`
+            ].join(" ");
+
+            const polygon = document.createElementNS(this.svgNS, 'polygon');
+            polygon.setAttribute('points', points);
+            polygon.setAttribute('fill', this.colorMap[d.category]);
+            polygon.dataset.category = d.category;
+            polygon.dataset.value = d.value;
+            polygon.dataset.conversion = d.conversion;
+
+            this.chartArea.appendChild(polygon);
+
+            // Add labels
+            const label = document.createElementNS(this.svgNS, 'text');
+            label.setAttribute('x', centerX);
+            label.setAttribute('y', y1 + stageHeight / 2);
+            label.setAttribute('class', 'funnel-label');
+            label.textContent = `${d.category}: ${d.value.toLocaleString()}`;
+            this.chartArea.appendChild(label);
+        });
+    }
+
+    /**
+     * Creates and manages the tooltip element.
+     * @private
+     */
+    _createTooltip() {
+        this.tooltip = document.createElement('div');
+        this.tooltip.className = 'viz-tooltip';
+        document.body.appendChild(this.tooltip);
+    }
+
+    /**
+     * Sets up event listeners for interactivity.
+     * @private
+     */
+    _setupInteractivity() {
+        this.chartArea.addEventListener('mouseover', (e) => {
+            const target = e.target;
+            if (target.tagName === 'polygon' && target.dataset.value) {
+                const data = target.dataset;
+                const content = `
+                    <strong>${data.category}</strong><br>
+                    Value: ${parseInt(data.value).toLocaleString()}<br>
+                    Conversion: ${data.conversion}%
+                `;
+                this.tooltip.innerHTML = content;
+                this.tooltip.style.display = 'block';
+                target.style.opacity = 0.7;
+            }
+        });
+
+        this.chartArea.addEventListener('mousemove', (e) => {
+            this.tooltip.style.left = `${e.clientX + 15}px`;
+            this.tooltip.style.top = `${e.clientY + 15}px`;
+        });
+
+        this.chartArea.addEventListener('mouseout', (e) => {
+            const target = e.target;
+            if (target.tagName === 'polygon') {
                 this.tooltip.style.display = 'none';
                 target.style.opacity = 1;
             }

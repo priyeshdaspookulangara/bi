@@ -18,16 +18,16 @@
             flex-wrap: wrap;
             justify-content: center;
             gap: 40px;
+            margin-bottom: 40px;
         }
         .viz-container {
             width: 100%;
-            max-width: 800px;
             height: 500px;
             border: 1px solid #ccc;
         }
-        #pie-chart-container {
-            max-width: 600px;
-        }
+        #column-chart-container { max-width: 800px; }
+        #pie-chart-container { max-width: 500px; }
+        #funnel-chart-container { max-width: 700px; margin: auto; }
     </style>
 </head>
 <body>
@@ -45,10 +45,18 @@
         </div>
     </div>
 
+    <hr>
+
+    <div>
+        <h2>Funnel Chart (Marketing Funnel)</h2>
+        <div id="funnel-chart-container" class="viz-container"></div>
+    </div>
+
+
     <script src="viz-sdk.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", () => {
-            // Sample Data
+            // --- Sample Data for Column and Pie Charts ---
             const salesData = [
               { "Category": "Product A", "Segment": "North", "Sales": 15000 },
               { "Category": "Product B", "Segment": "North", "Sales": 12000 },
@@ -59,6 +67,15 @@
               { "Category": "Product C", "Segment": "South", "Sales": 7000 },
               { "Category": "Product B", "Segment": "West", "Sales": 9000 },
               { "Category": "Product C", "Segment": "West", "Sales": 4000 }
+            ];
+
+            // --- Sample Data for Funnel Chart ---
+            const funnelData = [
+                { "Stage": "Website Visits", "Users": 20000 },
+                { "Stage": "Downloads", "Users": 9500 },
+                { "Stage": "Free Trial", "Users": 4200 },
+                { "Stage": "Subscription", "Users": 2100 },
+                { "Stage": "Referral", "Users": 750 }
             ];
 
             // --- Create Stacked Column Chart ---
@@ -77,6 +94,14 @@
                 valueKey: 'Sales'
             };
             VizSDK.createChart('Pie', pieContainer, salesData, pieOptions);
+
+            // --- Create Funnel Chart ---
+            const funnelContainer = document.getElementById('funnel-chart-container');
+            const funnelOptions = {
+                categoryKey: 'Stage',
+                valueKey: 'Users'
+            };
+            VizSDK.createChart('Funnel', funnelContainer, funnelData, funnelOptions);
         });
     </script>
 
