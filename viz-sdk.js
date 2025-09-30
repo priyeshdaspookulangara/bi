@@ -46,6 +46,11 @@ class VizSDK {
                 chart.render();
                 return chart;
             }
+            case 'GroupedBar': {
+                const chart = new GroupedBarChart(container, data, options);
+                chart.render();
+                return chart;
+            }
             default:
                 console.error(`VizSDK Error: Chart type "${type}" is not supported.`);
                 return null;
@@ -642,6 +647,253 @@ class PieChart {
         this.chartArea.addEventListener('mouseout', (e) => {
             const target = e.target;
             if (target.tagName === 'path') {
+                this.tooltip.style.display = 'none';
+                target.style.opacity = 1;
+            }
+        });
+    }
+}
+
+/**
+ * Renders and manages a grouped bar chart.
+ */
+class GroupedBarChart {
+    /**
+     * @param {HTMLElement} container - The DOM element for the chart.
+     * @param {Array<Object>} data - The raw JSON data.
+     * @param {Object} options - Chart configuration.
+     * @param {string} options.categoryKey - The key for x-axis categories (groups).
+     * @param {string} options.groupKey - The key for the bars within each group.
+     * @param {string} options.valueKey - The key for numerical values.
+     */
+    constructor(container, data, options) {
+        this.container = container;
+        this.data = data;
+        this.options = options;
+        this.dataProcessor = new DataProcessor(this.data);
+        this.svgNS = "http://www.w3.org/2000/svg";
+    }
+
+    /**
+     * Main method to render the chart.
+     */
+    render() {
+        const { categoryKey, groupKey, valueKey } = this.options;
+        // The getStackedData method returns the perfect structure for grouping as well.
+        const { groupedData, maxTotal, uniqueSegments } = this.dataProcessor.getStackedData(categoryKey, groupKey, valueKey);
+
+        this.processedData = groupedData;
+        this.maxTotal = maxTotal;
+        this.uniqueSegments = uniqueSegments.sort(); // Sort for consistent order
+
+        // Clear container
+        this.container.innerHTML = '';
+
+        // Dimensions
+        this.width = this.container.clientWidth;
+        this.height = this.container.clientHeight;
+        this.margin = { top: 20, right: 20, bottom: 70, left: 60 };
+        this.chartWidth = this.width - this.margin.left - this.margin.right;
+        this.chartHeight = this.height - this.margin.top - this.margin.bottom;
+
+        // Create SVG element
+        this.svg = document.createElementNS(this.svgNS, "svg");
+        this.svg.setAttribute('width', this.width);
+        this.svg.setAttribute('height', this.height);
+        this.container.appendChild(this.svg);
+
+        this.chartArea = document.createElementNS(this.svgNS, 'g');
+        this.chartArea.setAttribute('transform', `translate(${this.margin.left}, ${this.margin.top})`);
+        this.svg.appendChild(this.chartArea);
+
+        // Color map
+        this.colorMap = {};
+        const colors = ['#4e79a7', '#f28e2c', '#e15759', '#76b7b2', '#59a14f'];
+        this.uniqueSegments.forEach((segment, i) => {
+            this.colorMap[segment] = colors[i % colors.length];
+        });
+
+        this._drawAxes();
+        this._drawBars();
+        this._drawLegend();
+        this._createTooltip();
+        this._setupInteractivity();
+    }
+
+    /**
+     * Draws the X and Y axes with labels.
+     * @private
+     */
+    _drawAxes() {
+        // Find the max individual segment value for Y-axis scaling
+        let maxSegmentValue = 0;
+        this.processedData.forEach(group => {
+            for (const segment in group.segments) {
+                if (group.segments[segment] > maxSegmentValue) {
+                    maxSegmentValue = group.segments[segment];
+                }
+            }
+        });
+        this.yAxisMax = maxSegmentValue > 0 ? maxSegmentValue : 1; // Avoid division by zero
+
+        // Y-Axis
+        const yAxis = document.createElementNS(this.svgNS, 'line');
+        yAxis.setAttribute('x1', 0);
+        yAxis.setAttribute('y1', 0);
+        yAxis.setAttribute('x2', 0);
+        yAxis.setAttribute('y2', this.chartHeight);
+        yAxis.setAttribute('class', 'axis');
+        this.chartArea.appendChild(yAxis);
+
+        // Y-Axis Labels
+        const yTicks = 5;
+        for (let i = 0; i <= yTicks; i++) {
+            const value = (this.yAxisMax / yTicks) * i;
+            const yPos = this.chartHeight - (value / this.yAxisMax) * this.chartHeight;
+
+            const label = document.createElementNS(this.svgNS, 'text');
+            label.setAttribute('x', -10);
+            label.setAttribute('y', yPos);
+            label.setAttribute('class', 'axis-label y-axis-label');
+            label.textContent = Math.round(value).toLocaleString();
+            this.chartArea.appendChild(label);
+        }
+
+        // X-Axis
+        const xAxis = document.createElementNS(this.svgNS, 'line');
+        xAxis.setAttribute('x1', 0);
+        xAxis.setAttribute('y1', this.chartHeight);
+        xAxis.setAttribute('x2', this.chartWidth);
+        xAxis.setAttribute('y2', this.chartHeight);
+        xAxis.setAttribute('class', 'axis');
+        this.chartArea.appendChild(xAxis);
+
+        // X-Axis Labels (for each group)
+        const groupWidth = this.chartWidth / this.processedData.length;
+        this.processedData.forEach((d, i) => {
+            const xPos = (i * groupWidth) + (groupWidth / 2);
+            const label = document.createElementNS(this.svgNS, 'text');
+            label.setAttribute('x', xPos);
+            label.setAttribute('y', this.chartHeight + 20);
+            label.setAttribute('class', 'axis-label x-axis-label');
+            label.textContent = d.category;
+            this.chartArea.appendChild(label);
+        });
+    }
+
+    /**
+     * Draws the grouped bars.
+     * @private
+     */
+    _drawBars() {
+        const groupCount = this.processedData.length;
+        const segmentCount = this.uniqueSegments.length;
+
+        const groupWidth = this.chartWidth / groupCount;
+        const barPadding = 0.1; // Padding between bars within a group
+        const groupPadding = 0.2; // Padding between groups
+
+        const totalBarWidth = groupWidth * (1 - groupPadding);
+        const barWidth = (totalBarWidth / segmentCount) * (1 - barPadding);
+        const barMargin = (totalBarWidth / segmentCount) * barPadding / 2;
+
+        this.processedData.forEach((group, i) => {
+            const groupX = i * groupWidth + (groupWidth * groupPadding / 2);
+
+            this.uniqueSegments.forEach((segment, j) => {
+                const value = group.segments[segment] || 0;
+                if (value === 0) return;
+
+                const barHeight = (value / this.yAxisMax) * this.chartHeight;
+                const xPos = groupX + j * (barWidth + 2 * barMargin) + barMargin;
+                const yPos = this.chartHeight - barHeight;
+
+                const rect = document.createElementNS(this.svgNS, 'rect');
+                rect.setAttribute('x', xPos);
+                rect.setAttribute('y', yPos);
+                rect.setAttribute('width', barWidth);
+                rect.setAttribute('height', barHeight);
+                rect.setAttribute('fill', this.colorMap[segment]);
+
+                rect.dataset.category = group.category;
+                rect.dataset.segment = segment;
+                rect.dataset.value = value;
+
+                this.chartArea.appendChild(rect);
+            });
+        });
+    }
+
+    /**
+     * Draws the chart legend.
+     * @private
+     */
+    _drawLegend() {
+        const legendArea = document.createElementNS(this.svgNS, 'g');
+        legendArea.setAttribute('transform', `translate(0, ${this.chartHeight + 40})`);
+        this.chartArea.appendChild(legendArea);
+
+        let xOffset = 0;
+        this.uniqueSegments.forEach(segment => {
+            const legendItem = document.createElementNS(this.svgNS, 'g');
+            legendItem.setAttribute('transform', `translate(${xOffset}, 0)`);
+
+            const rect = document.createElementNS(this.svgNS, 'rect');
+            rect.setAttribute('width', 15);
+            rect.setAttribute('height', 15);
+            rect.setAttribute('fill', this.colorMap[segment]);
+            legendItem.appendChild(rect);
+
+            const text = document.createElementNS(this.svgNS, 'text');
+            text.setAttribute('x', 20);
+            text.setAttribute('y', 12);
+            text.setAttribute('class', 'legend-label');
+            text.textContent = segment;
+            legendItem.appendChild(text);
+
+            legendArea.appendChild(legendItem);
+            xOffset += text.getBBox().width + 30;
+        });
+    }
+
+    /**
+     * Creates and manages the tooltip element.
+     * @private
+     */
+    _createTooltip() {
+        this.tooltip = document.createElement('div');
+        this.tooltip.className = 'viz-tooltip';
+        document.body.appendChild(this.tooltip);
+    }
+
+    /**
+     * Sets up event listeners for interactivity.
+     * @private
+     */
+    _setupInteractivity() {
+        this.chartArea.addEventListener('mouseover', (e) => {
+            const target = e.target;
+            if (target.tagName === 'rect' && target.dataset.value) {
+                const data = target.dataset;
+                const content = `
+                    <strong>Category:</strong> ${data.category}<br>
+                    <strong>Segment:</strong> ${data.segment}<br>
+                    <strong>Value:</strong> ${parseInt(data.value).toLocaleString()}
+                `;
+                this.tooltip.innerHTML = content;
+                this.tooltip.style.display = 'block';
+                target.style.opacity = 0.7;
+            }
+        });
+
+        this.chartArea.addEventListener('mousemove', (e) => {
+            this.tooltip.style.left = `${e.clientX + 15}px`;
+            this.tooltip.style.top = `${e.clientY - 15}px`;
+        });
+
+        this.chartArea.addEventListener('mouseout', (e) => {
+            const target = e.target;
+            if (target.tagName === 'rect') {
                 this.tooltip.style.display = 'none';
                 target.style.opacity = 1;
             }

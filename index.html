@@ -25,9 +25,11 @@
             height: 500px;
             border: 1px solid #ccc;
         }
-        #column-chart-container { max-width: 800px; }
-        #pie-chart-container { max-width: 500px; }
-        #funnel-chart-container { max-width: 700px; margin: auto; }
+        #column-chart-container { max-width: 600px; }
+        #pie-chart-container { max-width: 450px; }
+        #funnel-chart-container { max-width: 600px; }
+        #line-chart-container { max-width: 600px; }
+        #grouped-bar-chart-container { max-width: 800px; margin: auto; }
     </style>
 </head>
 <body>
@@ -36,23 +38,27 @@
 
     <div class="chart-wrapper">
         <div>
-            <h2>Stacked Column Chart (Sales by Product)</h2>
+            <h2>Stacked Column Chart</h2>
             <div id="column-chart-container" class="viz-container"></div>
         </div>
         <div>
-            <h2>Pie Chart (Sales by Segment)</h2>
-            <div id="pie-chart-container" class="viz-container"></div>
+            <h2>Grouped Bar Chart</h2>
+            <div id="grouped-bar-chart-container" class="viz-container"></div>
         </div>
     </div>
 
     <div class="chart-wrapper">
         <div>
-            <h2>Funnel Chart (Marketing Funnel)</h2>
+            <h2>Funnel Chart</h2>
             <div id="funnel-chart-container" class="viz-container"></div>
         </div>
         <div>
-            <h2>Line Chart (Monthly Revenue)</h2>
+            <h2>Line Chart</h2>
             <div id="line-chart-container" class="viz-container"></div>
+        </div>
+        <div>
+            <h2>Pie Chart</h2>
+            <div id="pie-chart-container" class="viz-container"></div>
         </div>
     </div>
 
@@ -60,7 +66,7 @@
     <script src="viz-sdk.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", () => {
-            // --- Sample Data for Column and Pie Charts ---
+            // --- Sample Data for Bar and Pie Charts ---
             const salesData = [
               { "Category": "Product A", "Segment": "North", "Sales": 15000 },
               { "Category": "Product B", "Segment": "North", "Sales": 12000 },
@@ -93,37 +99,36 @@
             ];
 
             // --- Create Stacked Column Chart ---
-            const columnContainer = document.getElementById('column-chart-container');
-            const columnOptions = {
+            VizSDK.createChart('StackedColumn', document.getElementById('column-chart-container'), salesData, {
                 categoryKey: 'Category',
                 stackByKey: 'Segment',
                 valueKey: 'Sales'
-            };
-            VizSDK.createChart('StackedColumn', columnContainer, salesData, columnOptions);
+            });
+
+            // --- Create Grouped Bar Chart ---
+            VizSDK.createChart('GroupedBar', document.getElementById('grouped-bar-chart-container'), salesData, {
+                categoryKey: 'Category',
+                groupKey: 'Segment',
+                valueKey: 'Sales'
+            });
 
             // --- Create Pie Chart ---
-            const pieContainer = document.getElementById('pie-chart-container');
-            const pieOptions = {
-                categoryKey: 'Segment', // Slicing by segment
+            VizSDK.createChart('Pie', document.getElementById('pie-chart-container'), salesData, {
+                categoryKey: 'Segment',
                 valueKey: 'Sales'
-            };
-            VizSDK.createChart('Pie', pieContainer, salesData, pieOptions);
+            });
 
             // --- Create Funnel Chart ---
-            const funnelContainer = document.getElementById('funnel-chart-container');
-            const funnelOptions = {
+            VizSDK.createChart('Funnel', document.getElementById('funnel-chart-container'), funnelData, {
                 categoryKey: 'Stage',
                 valueKey: 'Users'
-            };
-            VizSDK.createChart('Funnel', funnelContainer, funnelData, funnelOptions);
+            });
 
             // --- Create Line Chart ---
-            const lineContainer = document.getElementById('line-chart-container');
-            const lineOptions = {
+            VizSDK.createChart('Line', document.getElementById('line-chart-container'), lineData, {
                 xKey: 'Month',
                 yKey: 'Revenue'
-            };
-            VizSDK.createChart('Line', lineContainer, lineData, lineOptions);
+            });
         });
     </script>
 
